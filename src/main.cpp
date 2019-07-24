@@ -9,17 +9,21 @@
 using nlohmann::json;
 using std::string;
 
+
 // For converting back and forth between radians and degrees.
 constexpr double pi() { return M_PI; }
 double deg2rad(double x) { return x * pi() / 180; }
 double rad2deg(double x) { return x * 180 / pi(); }
+
+bool run_twiddle = false;
+
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
 // else the empty string "" will be returned.
 string hasData(string s) {
   auto found_null = s.find("null");
-  auto b1 = s.find_first_of("[");
+  auto b1 = s.find_first_of("["); 
   auto b2 = s.find_last_of("]");
   if (found_null != string::npos) {
     return "";
@@ -34,15 +38,15 @@ int main() {
   uWS::Hub h;
 
   PID pid;
-  /**
-   * TODO: Initialize the pid variable.
-   */
-
+  pid.Init(0.09, 0.0005, 2.0, run_twiddle);
   h.onMessage([&pid](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, 
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
+    static unsigned int timesteps = 0;
+    static double total_error = 0.0;
+    
     if (length && length > 2 && data[0] == '4' && data[1] == '2') {
       auto s = hasData(string(data).substr(0, length));
 
@@ -57,12 +61,21 @@ int main() {
           double speed = std::stod(j[1]["speed"].get<string>());
           double angle = std::stod(j[1]["steering_angle"].get<string>());
           double steer_value;
-          /**
-           * TODO: Calculate steering value here, remember the steering value is
-           *   [-1, 1].
-           * NOTE: Feel free to play around with the throttle and speed.
-           *   Maybe use another PID controller to control the speed!
-           */
+          
+          pid.UpdateError(cte);
+          steer_value = pid.TotalError();  
+          
+          if (run_twiddle) {
+            if (timesteps > 500) {
+              pid.Twiddle(total_error, pid.Kp);
+              timesteps = 0;
+              total_error = 0.0;
+              return;
+            } else {
+              total_error += pow(cte, 2);
+            }
+            timesteps++;
+          }
           
           // DEBUG
           std::cout << "CTE: " << cte << " Steering Value: " << steer_value 
